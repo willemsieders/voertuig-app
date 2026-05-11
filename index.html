@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <title>Voertuig Inzet Systeem</title>
+  <style>
+    /* Reset: browsers hebben eigen standaard-stijlen, die wil je overschrijven */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box; /* padding telt niet mee in de breedte */
+    }
+
+    body {
+      font-family: sans-serif;
+      background: #f5f5f5;
+      padding: 32px;
+    }
+
+    h1 {
+      font-size: 22px;
+      margin-bottom: 20px;
+      color: #1a1a1a;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse; /* anders dubbele lijnen tussen cellen */
+      background: white;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    }
+
+    th {
+      background: #1a1a2e;
+      color: white;
+      text-align: left;
+      padding: 12px 16px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    td {
+      padding: 12px 16px;
+      font-size: 14px;
+      border-bottom: 1px solid #eee;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    /* Status badges */
+    .status {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .status-beschikbaar { background: #d4edda; color: #155724; }
+    .status-ingezet     { background: #fff3cd; color: #856404; }
+    .status-onderhoud   { background: #f8d7da; color: #721c24; }
+    .status-gepland     { background: #d7daf8; color: #1111e4; }
+  </style>
+</head>
+<body>
+
+  <h1>Voertuig Inzet Systeem</h1>
+
+<div style="display: flex; gap: 12px; margin-bottom: 16px;">
+  <input
+    type="text"
+    id="zoekbalk"
+    placeholder="Zoek op kenteken, type of project..."
+    oninput="zoekterm = this.value; renderTabel()"
+    style="flex: 1; padding: 10px 14px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;"
+  >
+  <select
+    id="status-filter"
+    onchange="statusFilter = this.value; renderTabel()"
+    style="padding: 10px 14px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
+    <option value="">Alle statussen</option>
+    <option value="beschikbaar">Beschikbaar</option>
+    <option value="ingezet">Ingezet</option>
+    <option value="gepland">Gepland</option>
+    <option value="onderhoud">Onderhoud</option>
+  </select>
+</div>
+<table>
+<thead>
+  <tr>
+    <th data-kolom="kenteken" data-label="Kenteken">Kenteken</th>
+    <th data-kolom="type"     data-label="Type">Type</th>
+    <th data-kolom="project"  data-label="Project">Project</th>
+    <th data-kolom="status"   data-label="Status">Status</th>
+    <th>Acties</th>
+  </tr>
+</thead>    <tbody id="voertuig-lijst">
+      <!-- JS vult dit in -->
+    </tbody>
+  </table>
+
+  <form id="voertuig-form" style="margin-top: 24px; display: flex; gap: 12px; flex-wrap: wrap;">
+  <input id="inp-kenteken" type="text"   placeholder="Kenteken"  required
+    style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
+  <input id="inp-type"     type="text"   placeholder="Type"      required
+    style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
+  <input id="inp-project"  type="text"   placeholder="Project"   required
+    style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
+  <select id="inp-status"
+    style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
+    <option value="beschikbaar">Beschikbaar</option>
+    <option value="ingezet">Ingezet</option>
+    <option value="gepland">Gepland</option>
+    <option value="onderhoud">Onderhoud</option>
+  </select>
+  <button type="submit"
+    style="padding: 8px 16px; background: #1a1a2e; color: white; border: none; border-radius: 6px; font-size: 14px; cursor: pointer;">
+    Toevoegen
+  </button>
+</form>
+
+<script>
+  const voertuigen = [
+    { kenteken: "AB-123-C", type: "Kraan",        project: "Brug A12",    status: "ingezet" },
+    { kenteken: "DE-456-F", type: "Vrachtwagen",  project: "-",           status: "beschikbaar" },
+    { kenteken: "GH-789-I", type: "Graafmachine", project: "Depot Noord", status: "onderhoud" },
+    { kenteken: "DR-125-K", type: "Bus",           project: "Depot Noord", status: "gepland" },
+  ];
+
+  // Staat van de UI — wat is de huidige zoekterm en sortering?
+  let zoekterm = "";
+  let sortKolom = null;   // welke kolom: "kenteken", "type", etc.
+  let sortRichting = 1;   // 1 = A→Z, -1 = Z→A
+  let statusFilter = ""; // "" = geen filter
+
+  const tbody = document.getElementById("voertuig-lijst");
+
+  const verwijderVoertuig = (kenteken) => {
+    const index = voertuigen.findIndex(v => v.kenteken === kenteken);
+    if (index !== -1) {
+      voertuigen.splice(index, 1);
+      renderTabel();
+    }
+  };
+
+  function geefGefilterdEnGesorteerd() {
+    // Stap 1: filter op zoekterm (zoek in alle velden)
+let resultaat = voertuigen.filter(v => {
+  const tekst = Object.values(v).join(" ").toLowerCase();
+  const zoekMatch = tekst.includes(zoekterm.toLowerCase());
+  const statusMatch = statusFilter === "" || v.status === statusFilter;
+  return zoekMatch && statusMatch; // beide moeten kloppen
+});
+
+    // Stap 2: sorteer als er een kolom gekozen is
+    if (sortKolom) {
+      resultaat.sort((a, b) => {
+        if (a[sortKolom] < b[sortKolom]) return -1 * sortRichting;
+        if (a[sortKolom] > b[sortKolom]) return  1 * sortRichting;
+        return 0;
+      });
+    }
+
+    return resultaat;
+  }
+
+  function renderTabel() {
+    tbody.innerHTML = "";
+
+    const lijst = geefGefilterdEnGesorteerd();
+
+    // Geen resultaten melding
+    if (lijst.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="5" style="text-align:center; color:#999; padding: 24px;">
+            Geen voertuigen gevonden
+          </td>
+        </tr>`;
+      return;
+    }
+
+    lijst.forEach(voertuig => {
+      const rij = document.createElement("tr");
+      rij.innerHTML = `
+        <td>${voertuig.kenteken}</td>
+        <td>${voertuig.type}</td>
+        <td>${voertuig.project}</td>
+        <td>
+          <span class="status status-${voertuig.status}">
+            ${voertuig.status}
+          </span>
+        </td>
+        <td>
+          <button onclick="verwijderVoertuig('${voertuig.kenteken}')">Verwijder</button>
+        </td>
+      `;
+      tbody.appendChild(rij);
+    });
+
+    // Pijltje tonen op actieve sorteerkolom
+    document.querySelectorAll("th[data-kolom]").forEach(th => {
+      const kolom = th.dataset.kolom;
+      const pijl = kolom === sortKolom ? (sortRichting === 1 ? " ↑" : " ↓") : "";
+      th.textContent = th.dataset.label + pijl;
+    });
+  }
+
+  // Sorteren bij klik op kolomkop
+  document.querySelectorAll("th[data-kolom]").forEach(th => {
+    th.style.cursor = "pointer";
+    th.addEventListener("click", () => {
+      const kolom = th.dataset.kolom;
+      if (sortKolom === kolom) {
+        sortRichting *= -1; // zelfde kolom → omdraaien
+      } else {
+        sortKolom = kolom;
+        sortRichting = 1;   // nieuwe kolom → altijd A→Z beginnen
+      }
+      renderTabel();
+    });
+  });
+
+  // Formulier
+  const form = document.getElementById("voertuig-form");
+  form.addEventListener("submit", function(event) {
+    event.preventDefault();
+    const nieuwVoertuig = {
+      kenteken: document.getElementById("inp-kenteken").value,
+      type:     document.getElementById("inp-type").value,
+      project:  document.getElementById("inp-project").value,
+      status:   document.getElementById("inp-status").value,
+    };
+    voertuigen.push(nieuwVoertuig);
+    renderTabel();
+    form.reset();
+  });
+
+  renderTabel();
+</script></body>
+</html>
